@@ -2,7 +2,7 @@ const { okumaHavuzu, yazmaHavuzu } = require('./db');
 
 async function gununMenusunuGetir(yemekhaneId, ogunId, tarih) {
   const [yemekler] = await okumaHavuzu.query(
-    `SELECT yemek_id, yemek, kategori, kalori, vejetaryen, alerjenler
+    `SELECT yemek_id, yemek, kategori, kalori, vejetaryen, alerjenler, alerjen_idler
      FROM v_menu_detay
      WHERE tarih = ? AND yemekhane_id = ? AND ogun_id = ?
      ORDER BY kategori_sira, yemek`,
@@ -23,6 +23,13 @@ async function haftalikMenuyuGetir(yemekhaneId, rol) {
        d.bos_yer,
        CASE WHEN ? = 'ogrenci' THEN m.ogrenci_fiyati
             ELSE m.personel_fiyati END AS fiyat,
+       CASE
+         WHEN d.ogun_id IN (2, 3) THEN ROUND(
+           (CASE WHEN ? = 'ogrenci' THEN m.ogrenci_fiyati
+                 ELSE m.personel_fiyati END) * 0.60, 2
+         )
+         ELSE NULL
+       END AS yarim_fiyat,
        DATE_FORMAT(d.rezervasyon_son, '%H:%i') AS son_saat,
        NOW() >= d.rezervasyon_son AS sure_doldu,
        (
@@ -36,16 +43,16 @@ async function haftalikMenuyuGetir(yemekhaneId, rol) {
        AND d.tarih >= CURDATE()
        AND d.tarih < DATE_ADD(CURDATE(), INTERVAL 7 DAY)
      ORDER BY d.tarih, d.rezervasyon_son, d.menu_id`,
-    [rol, yemekhaneId]
+    [rol, rol, yemekhaneId]
   );
 
   return menuler;
 }
 
-async function rezervasyonOlustur(kullaniciId, menuId) {
+async function rezervasyonOlustur(kullaniciId, menuId, porsiyon = 'tam') {
   const [sonuclar] = await yazmaHavuzu.query(
-    'CALL sp_rezervasyon_yap(?, ?)',
-    [kullaniciId, menuId]
+    'CALL sp_rezervasyon_yap(?, ?, ?)',
+    [kullaniciId, menuId, porsiyon]
   );
 
   return sonuclar[0][0];
@@ -60,6 +67,7 @@ async function rezervasyonlariListele(kullaniciId) {
             o.ad AS ogun,
             r.durum,
             r.ucret,
+            r.porsiyon,
             (r.durum = 'aktif' AND NOW() < TIMESTAMP(m.tarih, o.son_saat))
               AS iptal_edilebilir
      FROM rezervasyonlar r

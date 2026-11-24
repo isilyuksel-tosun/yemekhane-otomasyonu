@@ -68,14 +68,18 @@ async function rezervasyonYap(req, res) {
     return res.status(401).json({ hata: 'Giriş yapmanız gerekiyor.' });
   }
 
-  const { menu_id: menuId } = req.body ?? {};
+  const { menu_id: menuId, porsiyon = 'tam' } = req.body ?? {};
 
   if (!Number.isInteger(menuId) || menuId < 1 || menuId > 4294967295) {
     return res.status(400).json({ hata: 'Geçerli bir menü seçin.' });
   }
 
+  if (porsiyon !== 'tam' && porsiyon !== 'yarim') {
+    return res.status(400).json({ hata: 'Geçerli bir porsiyon seçin.' });
+  }
+
   try {
-    const sonuc = await rezervasyonOlustur(kullanici.id, menuId);
+    const sonuc = await rezervasyonOlustur(kullanici.id, menuId, porsiyon);
 
     return res.status(201).json({
       mesaj: 'Rezervasyon yapıldı.',

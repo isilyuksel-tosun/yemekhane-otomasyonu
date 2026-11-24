@@ -130,6 +130,17 @@
         <p id="oturum-mesaji" role="status"></p>
       </section>
 
+      <section class="bolum" id="alerjen-profili" aria-labelledby="alerjen-profil-basligi" hidden>
+        <h2 id="alerjen-profil-basligi">Alerjen Tercihlerim</h2>
+        <form id="alerjen-formu" method="post">
+          <fieldset id="alerjen-form-alanlari" class="islem-alani" disabled>
+            <div id="alerjen-secenekleri" class="yonetim-yemekler"></div>
+            <button type="submit">Alerjen Tercihlerini Kaydet</button>
+          </fieldset>
+        </form>
+        <p id="alerjen-profil-mesaji" role="status"></p>
+      </section>
+
       <section class="bolum" id="yonetim-paneli" aria-labelledby="yonetim-baslik" hidden>
         <h2 id="yonetim-baslik">Yönetici Paneli</h2>
         <form id="yonetim-formu" aria-labelledby="yonetim-form-baslik">
@@ -495,6 +506,22 @@
             ` · Vejetaryen: ${vejetaryen} · Alerjenler: ${alerjenler}`
           );
 
+          const eslesenAlerjenler = String(yemek.alerjen_idler ?? '')
+            .split(',')
+            .map(Number)
+            .filter(id => seciliAlerjenler.has(id))
+            .map(id => alerjenAdlari.get(id))
+            .filter(Boolean);
+
+          if (eslesenAlerjenler.length > 0) {
+            const uyari = metinElemani(
+              'strong',
+              `Alerjen uyarısı: ${eslesenAlerjenler.join(', ')}`
+            );
+            uyari.className = 'bildirim-hata';
+            satir.append(document.createElement('br'), uyari);
+          }
+
           yemekListesi.append(satir);
         }
       } catch {
@@ -527,6 +554,19 @@
           const kart = document.createElement('li');
           kart.className = 'kart';
 
+          const porsiyonAlani = metinElemani('label', 'Porsiyon');
+          const porsiyonSecimi = document.createElement('select');
+          porsiyonSecimi.add(new Option('Tam porsiyon · ' + lira.format(menu.fiyat), 'tam'));
+
+          if (menu.yarim_fiyat != null) {
+            porsiyonSecimi.add(new Option(
+              'Yarım porsiyon · ' + lira.format(menu.yarim_fiyat),
+              'yarim'
+            ));
+          }
+
+          porsiyonAlani.append(porsiyonSecimi);
+
           const dugme = dugmeOlustur('Rezervasyon Yap');
           if (Number(menu.sure_doldu) === 1) {
             dugme.textContent = 'Süre doldu';
@@ -538,7 +578,9 @@
             dugme.textContent = 'Yer kalmadı';
             dugme.disabled = true;
           } else {
-            dugme.addEventListener('click', () => rezervasyonYap(Number(menu.menu_id), dugme));
+            dugme.addEventListener('click', () =>
+              rezervasyonYap(Number(menu.menu_id), dugme, porsiyonSecimi.value)
+            );
           }
 
           kart.append(
@@ -549,8 +591,10 @@
               `Fiyat: ${lira.format(menu.fiyat)} · Boş yer: ${menu.bos_yer}` +
               ` · Son rezervasyon saati: ${menu.son_saat}`
             ),
+            porsiyonAlani,
             dugme
           );
+          porsiyonSecimi.disabled = dugme.disabled;
           haftalikListe.append(kart);
         }
       } catch (hata) {
@@ -565,7 +609,7 @@
       bakiyeYukleDugmesi.disabled = kilitli;
     }
 
-    async function rezervasyonYap(menuId, dugme) {
+    async function rezervasyonYap(menuId, dugme, porsiyon = 'tam') {
       if (!aktifKullanici || bakiyeIslemiSuruyor) return;
 
       const kullanici = aktifKullanici;
@@ -576,7 +620,7 @@
         const veri = await api(
           '/api/rezervasyonlar',
           'Rezervasyon yapılamadı.',
-          jsonIstek('POST', { menu_id: menuId })
+          jsonIstek('POST', { menu_id: menuId, porsiyon })
         );
         if (kullanici !== aktifKullanici) return;
 
@@ -620,9 +664,10 @@
           kart.className = 'kart';
           const durum = metinElemani('span', rezervasyonDurumlari[kayit.durum] ?? kayit.durum);
           const bilgi = document.createElement('p');
+          const porsiyonAdi = kayit.porsiyon === 'yarim' ? 'Yarım porsiyon' : 'Tam porsiyon';
 
           bilgi.append(
-            `${kayit.yemekhane} · ${lira.format(kayit.ucret)} · `,
+            `${kayit.yemekhane} · ${porsiyonAdi} · ${lira.format(kayit.ucret)} · `,
             durum
           );
 
@@ -1055,6 +1100,86 @@
       }
     }
 
+    const alerjenProfili = eleman('alerjen-profili');
+    const alerjenFormu = eleman('alerjen-formu');
+    const alerjenFormAlanlari = eleman('alerjen-form-alanlari');
+    const alerjenSecenekleri = eleman('alerjen-secenekleri');
+    const alerjenProfilMesaji = eleman('alerjen-profil-mesaji');
+
+    const alerjenAdlari = new Map();
+    let seciliAlerjenler = new Set();
+
+    async function profilAlerjenleriniYukle(kullanici) {
+      alerjenProfili.hidden = !kullanici;
+      alerjenFormAlanlari.disabled = true;
+      alerjenSecenekleri.replaceChildren();
+      alerjenAdlari.clear();
+      seciliAlerjenler.clear();
+      mesajGoster(alerjenProfilMesaji, '');
+
+      if (!kullanici) return;
+      mesajGoster(alerjenProfilMesaji, 'Alerjen tercihleri yükleniyor…');
+
+      try {
+        const veri = await api('/api/profil/alerjenler', 'Alerjen tercihleri yüklenemedi.');
+        if (aktifKullanici !== kullanici) return;
+
+        for (const alerjen of veri.alerjenler) {
+          const id = Number(alerjen.id);
+          alerjenAdlari.set(id, alerjen.ad);
+
+          const etiket = document.createElement('label');
+          const kutu = document.createElement('input');
+          kutu.type = 'checkbox';
+          kutu.name = 'alerjen';
+          kutu.value = id;
+          kutu.checked = alerjen.secili === true;
+
+          if (kutu.checked) seciliAlerjenler.add(id);
+          etiket.append(kutu, alerjen.ad);
+          alerjenSecenekleri.append(etiket);
+        }
+
+        alerjenFormAlanlari.disabled = false;
+        mesajGoster(alerjenProfilMesaji, '');
+        menuyuGoster();
+      } catch (hata) {
+        if (aktifKullanici === kullanici) {
+          mesajGoster(alerjenProfilMesaji, hata.message, 'hata');
+        }
+      }
+    }
+
+    alerjenFormu.addEventListener('submit', async olay => {
+      olay.preventDefault();
+
+      const kullanici = aktifKullanici;
+      if (!kullanici || alerjenFormAlanlari.disabled) return;
+
+      const alerjenIdleri = new FormData(alerjenFormu).getAll('alerjen').map(Number);
+      alerjenFormAlanlari.disabled = true;
+      mesajGoster(alerjenProfilMesaji, 'Alerjen tercihleri kaydediliyor…');
+
+      try {
+        const veri = await api(
+          '/api/profil/alerjenler',
+          'Alerjen tercihleri kaydedilemedi.',
+          jsonIstek('PUT', { alerjen_idleri: alerjenIdleri })
+        );
+        if (aktifKullanici !== kullanici) return;
+
+        seciliAlerjenler = new Set(veri.alerjen_idleri.map(Number));
+        mesajGoster(alerjenProfilMesaji, veri.mesaj, 'basari');
+        menuyuGoster();
+      } catch (hata) {
+        if (aktifKullanici === kullanici) {
+          mesajGoster(alerjenProfilMesaji, hata.message, 'hata');
+        }
+      } finally {
+        if (aktifKullanici === kullanici) alerjenFormAlanlari.disabled = false;
+      }
+    });
+
     function oturumuGoster(kullanici) {
       aktifKullanici = kullanici;
       rezerveEdilenMenuler.clear();
@@ -1083,6 +1208,7 @@
       bakiyeBilgileriniYukle();
       degerlendirmeleriYukle();
       yonetimOturumunuGuncelle(kullanici);
+      profilAlerjenleriniYukle(kullanici);
       menuyuGoster();
     }
 

@@ -20,6 +20,10 @@ const {
   yonetimListesiniGoster,
   yonetimMenusunuKaydet,
 } = require('./yonetimController');
+const {
+  profilAlerjenleriniListele,
+  profilAlerjenleriniGuncelle,
+} = require('./profilController');
 
 const app = express();
 const port = 8000;
@@ -82,6 +86,8 @@ app.get('/api/yonetim/menuler', yonetimListesiniGoster);
 app.post('/api/yonetim/menuler', yonetimMenusunuKaydet);
 app.put('/api/yonetim/menuler/:id', yonetimMenusunuKaydet);
 
+app.get('/api/profil/alerjenler', profilAlerjenleriniListele);
+app.put('/api/profil/alerjenler', profilAlerjenleriniGuncelle);
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`Yemekhane API ${port} portunda çalışıyor.`);
