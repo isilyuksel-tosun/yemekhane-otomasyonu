@@ -5,6 +5,7 @@ const {
   rezervasyonlariListele,
   rezervasyonuIptalEt,
 } = require('./menuVeri');
+const { menuOnbellegindenGetir } = require('./menuOnbellegi');
 
 async function gununMenusu(req, res) {
   const { yemekhane_id: yemekhaneId, ogun_id: ogunId } = req.query;
@@ -22,7 +23,11 @@ async function gununMenusu(req, res) {
   }
 
   try {
-    const yemekler = await gununMenusunuGetir(yemekhaneId, ogunId);
+    const yemekler = await menuOnbellegindenGetir(
+      yemekhaneId,
+      ogunId,
+      tarih => gununMenusunuGetir(yemekhaneId, ogunId, tarih)
+    );
     const toplamKalori = yemekler.reduce(
       (toplam, yemek) => toplam + Number(yemek.kalori),
       0

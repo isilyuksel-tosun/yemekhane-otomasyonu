@@ -1,4 +1,5 @@
 const { okumaHavuzu, yazmaHavuzu } = require('./db');
+const { menuGuncellemesiniUygula } = require('./menuOnbellegi');
 
 async function yonetimVerileriniGetir() {
   const [[menuler], [yemekhaneler], [ogunler], [yemekler]] = await Promise.all([
@@ -41,7 +42,7 @@ async function yonetimVerileriniGetir() {
   };
 }
 
-async function menuKaydet(menuId, veri)  {
+async function menuIsleminiKaydet(menuId, veri)  {
   const baglanti = await yazmaHavuzu.getConnection();
 
   try {
@@ -92,6 +93,29 @@ async function menuKaydet(menuId, veri)  {
   } finally {
     baglanti.release();
   }
+}
+
+async function menuKaydet(menuId, veri) {
+  let menu = veri;
+
+  if (menuId !== null) {
+    const [[mevcutMenu]] = await yazmaHavuzu.query(
+      `SELECT yemekhane_id,
+              DATE_FORMAT(tarih, '%Y-%m-%d') AS tarih,
+              ogun_id
+       FROM menuler
+       WHERE id = ?`,
+      [menuId]
+    );
+
+    if (!mevcutMenu) return null;
+    menu = mevcutMenu;
+  }
+
+  return menuGuncellemesiniUygula(
+    menu,
+    () => menuIsleminiKaydet(menuId, veri)
+  );
 }
 
 module.exports = { yonetimVerileriniGetir, menuKaydet };

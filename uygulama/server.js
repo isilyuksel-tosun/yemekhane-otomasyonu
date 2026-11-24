@@ -8,8 +8,7 @@ const {
   rezervasyonlarim,
   rezervasyonIptal,
 } = require('./menuController');
-const session = require('express-session');
-const { randomBytes } = require('node:crypto');
+const { redisOturumunuHazirla } = require('./redisOturumu');
 const { giris, oturumuGetir, cikis } = require('./oturumController');
 const { bakiyeGoster, bakiyeYuklemeYap } = require('./bakiyeController');
 const {
@@ -27,13 +26,8 @@ const port = 8000;
 
 app.use(express.json());
 
-app.use(session({
-  name: 'yemekhane.sid',
-  secret: randomBytes(32).toString('hex'),
-  resave: false,
-  saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax', maxAge: 30 * 60 * 1000 },
-}));
+async function baslat() {
+  app.use(await redisOturumunuHazirla());
 
 app.post('/api/giris', giris);
 app.get('/api/oturum', oturumuGetir);
@@ -91,4 +85,11 @@ app.put('/api/yonetim/menuler/:id', yonetimMenusunuKaydet);
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`Yemekhane API ${port} portunda çalışıyor.`);
+});
+
+}
+
+baslat().catch(hata => {
+  console.error('Uygulama başlatılamadı:', hata.message);
+  process.exit(1);
 });

@@ -1,12 +1,12 @@
 const { okumaHavuzu, yazmaHavuzu } = require('./db');
 
-async function gununMenusunuGetir(yemekhaneId, ogunId) {
+async function gununMenusunuGetir(yemekhaneId, ogunId, tarih) {
   const [yemekler] = await okumaHavuzu.query(
     `SELECT yemek_id, yemek, kategori, kalori, vejetaryen, alerjenler
      FROM v_menu_detay
-     WHERE tarih = CURDATE() AND yemekhane_id = ? AND ogun_id = ?
+     WHERE tarih = ? AND yemekhane_id = ? AND ogun_id = ?
      ORDER BY kategori_sira, yemek`,
-    [yemekhaneId, ogunId]
+    [tarih, yemekhaneId, ogunId]
   );
 
   return yemekler;
