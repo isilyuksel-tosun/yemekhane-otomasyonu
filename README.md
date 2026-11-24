@@ -1,15 +1,17 @@
-# Yemekhane Otomasyonu · Başlangıç Paketi
+# Yemekhane Otomasyonu
 
-Web Teknolojileri dönem ödevinin hazır altyapısı. Veritabanı şeması, örnek veri, kaynak-replika
-replikasyonu, Redis ve Apache tek komutla çalışır. Sizin yazacağınız kısım **uygulama servisi ve arayüzdür**.
+Web Teknolojileri dönem ödevi. Apache, HTML/CSS arayüzünü sunar ve `/api/` isteklerini
+Express uygulamasına iletir. MySQL kaynak-replika ve Redis aynı Compose projesinde çalışır.
+
+[Dönem ödevi raporu (PDF)](rapor/Yemekhane_Otomasyonu_Donem_Raporu.pdf)
 
 ## Hızlı başlangıç
 
 Gerekenler: Docker Desktop (Windows/macOS) ya da Docker Engine + Compose v2 (Linux), Git.
 
 ```bash
-git clone <kendi-deponuz>
-cd yemekhane-baslangic
+git clone https://github.com/isilyuksel-tosun/yemekhane-otomasyonu.git
+cd yemekhane-otomasyonu
 docker compose up -d
 docker compose ps -a
 ```
@@ -22,25 +24,29 @@ docker compose ps -a
 | mysql-replica | `Up (healthy)` |
 | redis | `Up (healthy)` |
 | frontend | `Up (healthy)` |
+| uygulama | `Up` |
 | replica-setup | `Exited (0)` — işini yapıp çıkar, bu normaldir |
 
 `replica-setup` yalnızca `docker compose ps -a` ile görünür (`-a` olmadan çıkmış container'lar listelenmez).
 
-Tarayıcıda: <http://localhost:8080>
+Tarayıcıda <http://localhost:18080> adresini açın. <http://localhost:18080/api/> adresi JSON durum yanıtı verir.
 
 ## Klasör yapısı
 
 ```
-docker-compose.yml        servisler; uygulama servisi yorum satırında
+docker-compose.yml        altı servisin tanımı
 db/init/01_sema.sql       12 tablo, 3 view, 4 stored procedure
 db/init/02_ornek_veri.sql 30 kullanıcı, 52 yemek, 84 menü, ~365 rezervasyon
+db/init/04_degisiklik.sql yarım porsiyon ve alerjen profili migration dosyası
+uygulama/                 Express API, Controller ve veri katmanı
+rapor/                    dönem ödevi raporu
 db/replica-setup.sh       replikayı bir kez kurar ve salt okunur yapar
 apache/                   Apache 2.4 imajı ve yönlendirme ayarı (MVC / Web API)
 frontend/                 Apache'nin sunduğu HTML/CSS (css/temel.css başlangıç stilleri)
 ```
 
-`db/init` içindeki dosyalar **yalnızca veritabanı ilk kez oluşturulurken** çalışır. Sonradan
-değiştirirseniz etkisini görmek için `docker compose down -v` ile sıfırlamanız gerekir.
+`db/init/` dosyaları boş MySQL verisiyle ilk başlatmada otomatik çalışır.
+Mevcut veriyi koruyarak Aşama 4’e geçmek için [migration adımlarını](#migration-aşama-4) izleyin.
 
 ## Bağlantı bilgileri
 
@@ -52,7 +58,7 @@ kendi bilgisayarınızdaki araçlar (DBeaver, MySQL Workbench, terminal) içindi
 | Yazma (kaynak) | `mysql-primary:3306` | `localhost:3307` |
 | Okuma (replika) | `mysql-replica:3306` | `localhost:3308` |
 | Redis | `redis:6379` | `localhost:6379` |
-| Web | — | `localhost:8080` |
+| Web | — | `localhost:18080` |
 
 | Hesap | Kullanıcı | Şifre |
 |---|---|---|
@@ -107,7 +113,7 @@ Para hareketi yapan işlemleri veri katmanında SQL ile yeniden yazmayın; bu yo
 
 | Yordam | Parametreler | Başarıda dönen tek satır |
 |---|---|---|
-| `sp_rezervasyon_yap` | `kullanici_id, menu_id` | `rezervasyon_id, ucret, bakiye` |
+| `sp_rezervasyon_yap` | `kullanici_id, menu_id, porsiyon` | `rezervasyon_id, ucret, bakiye, porsiyon` |
 | `sp_rezervasyon_iptal` | `kullanici_id, rezervasyon_id` | `rezervasyon_id, iade, bakiye` |
 | `sp_bakiye_yukle` | `kullanici_id, tutar` (10–1000 TL) | `hareket_id, bakiye` |
 | `sp_turnike_gecis` | `kullanici_id, yemekhane_id, zaman` | `rezervasyon_id, menu_id, ogun` |
@@ -131,20 +137,11 @@ CALL sp_turnike_gecis(7, 1, CONCAT(CURDATE(), ' 12:15:00'));
 
 Yordamlar yazma işlemidir; **kaynakta** (`mysql-primary`) çağrılır.
 
-## Uygulama servisini ekleme (Aşama 2)
+## Uygulama servisi (Aşama 2)
 
-1. Kodunuzu ve `Dockerfile`'ı `uygulama/` klasörüne koyun. Uygulama container içinde **8000**
-   portunu dinlesin (farklıysa `docker-compose.yml` içindeki `UYGULAMA_ADRES`'i değiştirin).
-2. `docker-compose.yml` sonundaki `uygulama:` bloğunun yorumlarını kaldırın.
-3. Uygulama bağlantı bilgilerini ortam değişkenlerinden okusun:
-   `DB_YAZMA_HOST`, `DB_OKUMA_HOST`, `DB_PORT`, `DB_ADI`, `DB_KULLANICI`, `DB_SIFRE`, `REDIS_HOST`, `REDIS_PORT`.
-4. Apache modunu seçin: `frontend` servisinde `command: ["httpd-foreground", "-D", "WEBAPI"]`
-   - **WEBAPI**: `/api/...` uygulamaya gider, geri kalanı `frontend/` klasöründen sunulur.
-     Uygulamanızın yolları `/api/` ile başlamalıdır.
-   - **MVC**: `/css/`, `/img/`, `/js/`, `/hata/` Apache'den, geri kalan her şey uygulamadan gelir.
-5. `docker compose up -d --build`
-
-Uygulama henüz yoksa ya da çökmüşse Apache `frontend/hata/503.html` sayfasını gösterir.
+`uygulama` servisi Compose dosyasında tanımlıdır. Express container içinde 8000 portunu dinler.
+Apache `WEBAPI` modunda `/api/` isteklerini Express’e iletir. Uygulama MySQL ve Redis bağlantı
+bilgilerini Compose ortam değişkenlerinden okur.
 
 ## Doğrulama komutları (Aşama 1)
 
@@ -177,14 +174,17 @@ komut satırına yazdığınız için çıkan uyarı satırını önemsemeyin.
 
 ## Migration (Aşama 4)
 
-`04_degisiklik.sql` dosyasını `db/init/` klasörüne koyun. Böylece depoyu sıfırdan kuran biri
-(`docker compose up -d`) değişikliği otomatik alır. Çalışan sistemde ise kaynağa elle uygulayın:
+`db/init/04_degisiklik.sql` ilk kurulumda otomatik çalışır. Aşama 3’ten kalan bir veritabanını
+güncelliyorsanız aşağıdaki işlemi kaynakta bir kez yapın:
 
 ```bash
-docker compose exec -T mysql-primary mysql -uroot -pyemekhane_kok yemekhane < db/init/04_degisiklik.sql
+docker compose cp db/init/04_degisiklik.sql mysql-primary:/tmp/04_degisiklik.sql
+docker compose exec mysql-primary mysql -uroot -p yemekhane
 ```
 
-Replikaya ayrıca uygulamayın; değişiklik replikasyonla geçer. `03` numarası boş bırakılmıştır.
+MySQL oturumunda `SOURCE /tmp/04_degisiklik.sql` çalıştırın. Şema değişikliği replikasyonla
+replikaya ulaşır. Yeni uygulamaya geçmeden önce Redis’te `menu:*` anahtarlarını tarayıp temizleyin.
+`oturum:*` anahtarları oturum verilerini tutar.
 
 ## Sıfırlama
 
